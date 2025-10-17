@@ -1,11 +1,12 @@
 <?php
+// filepath: app/Http/Requests/StoreFavoriteRequest.php
 
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Http\Exceptions\HttpResponseException;
-use Illuminate\Validation\Rule;
+use App\Rules\ProductNotAlreadyFavorited;
 
 class StoreFavoriteRequest extends FormRequest
 {
@@ -29,9 +30,7 @@ class StoreFavoriteRequest extends FormRequest
                 'required',
                 'integer',
                 'min:1',
-                Rule::unique('product_user', 'product_id')->where(function ($query) {
-                    return $query->where('user_id', auth()->id());
-                }),
+                new ProductNotAlreadyFavorited(),
             ],
         ];
     }
@@ -42,7 +41,6 @@ class StoreFavoriteRequest extends FormRequest
             'product_id.required' => trans('favorites.product_id_required', [], 'pt_BR'),
             'product_id.integer' => trans('favorites.product_id_integer', [], 'pt_BR'),
             'product_id.min' => trans('favorites.product_id_min', [], 'pt_BR'),
-            'product_id.unique' => trans('favorites.already_exists', [], 'pt_BR'),
         ];
     }
 

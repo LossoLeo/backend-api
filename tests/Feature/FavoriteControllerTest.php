@@ -77,7 +77,7 @@ class FavoriteControllerTest extends TestCase
             'product_id' => 999,
         ]);
 
-        $response->assertStatus(404);
+        $response->assertStatus(409);
     }
 
     public function test_user_cannot_add_duplicate_favorite(): void

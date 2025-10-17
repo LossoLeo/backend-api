@@ -65,8 +65,6 @@ class FavoriteService
             return false;
         }
 
-        $this->favoriteRepository->removeFavorite($user, $productId);
-
-        return true;
+        return $this->favoriteRepository->removeFavorite($user, $productId);
     }
 }
