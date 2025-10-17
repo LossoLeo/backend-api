@@ -3,41 +3,62 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreFavoriteRequest;
-use App\Models\Product;
-use App\Models\User;
-use App\Services\FakeStoreApiService;
+use App\Http\Resources\ProductResource;
+use App\Http\Resources\FavoriteUserResource;
+use App\Services\FavoriteService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class FavoriteController extends Controller
 {
     public function __construct(
-        private FakeStoreApiService $fakeStoreApiService
+        private FavoriteService $favoriteService
     ) {}
 
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
         $user = auth()->user();
-        $favorites = $user->products;
+        $perPage = $request->query('per_page', 10);
 
-        return response()->json($favorites);
+        $favorites = $this->favoriteService->getUserFavorites($user->id, $perPage);
+
+        if (!$favorites) {
+            return response()->json(['message' => 'Usuário não encontrado'], 404);
+        }
+
+        return response()->json([
+            'data' => ProductResource::collection($favorites->items()),
+            'pagination' => [
+                'current_page' => $favorites->currentPage(),
+                'per_page' => $favorites->perPage(),
+                'total' => $favorites->total(),
+                'last_page' => $favorites->lastPage(),
+                'from' => $favorites->firstItem(),
+                'to' => $favorites->lastItem(),
+            ]
+        ]);
     }
 
-    public function indexAll(): JsonResponse
+    public function indexAll(Request $request): JsonResponse
     {
         if (!auth()->user()->hasRole('admin')) {
             return response()->json(['message' => 'Acesso não autorizado'], 403);
         }
 
-        $users = User::with('products')->get();
+        $perPage = $request->query('per_page', 10);
+        $users = $this->favoriteService->getAllUsersWithFavorites($perPage);
 
-        return response()->json($users->map(function ($user) {
-            return [
-                'user_id' => $user->id,
-                'user_name' => $user->name,
-                'user_email' => $user->email,
-                'favorites' => $user->products,
-            ];
-        }));
+        return response()->json([
+            'data' => FavoriteUserResource::collection($users->items()),
+            'pagination' => [
+                'current_page' => $users->currentPage(),
+                'per_page' => $users->perPage(),
+                'total' => $users->total(),
+                'last_page' => $users->lastPage(),
+                'from' => $users->firstItem(),
+                'to' => $users->lastItem(),
+            ]
+        ]);
     }
 
     public function show(int $userId): JsonResponse
@@ -48,7 +69,7 @@ class FavoriteController extends Controller
             return response()->json(['message' => 'Acesso não autorizado'], 403);
         }
 
-        $user = User::with('products')->find($userId);
+        $user = $this->favoriteService->getUserWithFavorites($userId);
 
         if (!$user) {
             return response()->json([
@@ -56,47 +77,24 @@ class FavoriteController extends Controller
             ], 404);
         }
 
-        return response()->json([
-            'user_id' => $user->id,
-            'user_name' => $user->name,
-            'favorites' => $user->products,
-        ]);
+        return response()->json(new FavoriteUserResource($user));
     }
 
     public function store(StoreFavoriteRequest $request): JsonResponse
     {
         $user = auth()->user();
-        $productExternalId = $request->product_id;
 
-        $productData = $this->fakeStoreApiService->getProductById($productExternalId);
+        $result = $this->favoriteService->addFavorite($user, $request->product_id);
 
-        if (!$productData) {
+        if (!$result) {
             return response()->json([
-                'message' => trans('favorites.product_not_found', [], 'pt_BR')
+                'message' => trans('favorites.not_found', [], 'pt_BR')
             ], 404);
         }
 
-        $product = Product::updateOrCreate(
-            ['external_id' => $productData['id']],
-            [
-                'title' => $productData['title'],
-                'image' => $productData['image'],
-                'price' => $productData['price'],
-                'rating' => $productData['rating'] ?? null,
-            ]
-        );
-
-        if ($user->products()->where('product_id', $product->id)->exists()) {
-            return response()->json([
-                'message' => trans('favorites.already_exists', [], 'pt_BR')
-            ], 409);
-        }
-
-        $user->products()->attach($product->id);
-
         return response()->json([
             'message' => trans('favorites.added', [], 'pt_BR'),
-            'product' => $product
+            'product' => $result['product'],
         ], 201);
     }
 
@@ -104,15 +102,13 @@ class FavoriteController extends Controller
     {
         $user = auth()->user();
 
-        $product = $user->products()->where('product_id', $productId)->first();
+        $removed = $this->favoriteService->removeFavorite($user, $productId);
 
-        if (!$product) {
+        if (!$removed) {
             return response()->json([
                 'message' => trans('favorites.not_found', [], 'pt_BR')
             ], 404);
         }
-
-        $user->products()->detach($productId);
 
         return response()->json([
             'message' => trans('favorites.removed', [], 'pt_BR')

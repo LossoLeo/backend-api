@@ -11,47 +11,36 @@ class FakeStoreApiService
 
     public function getAllProducts(): ?array
     {
-        try {
-            $response = Http::timeout(10)->get("{$this->baseUrl}/products");
-
-            if ($response->successful()) {
-                return $response->json();
-            }
-
-            Log::error('Erro ao buscar produtos da API externa', [
-                'status' => $response->status(),
-                'body' => $response->body()
-            ]);
-
-            return null;
-        } catch (\Exception $e) {
-            Log::error('Exceção ao buscar produtos da API externa', [
-                'message' => $e->getMessage()
-            ]);
-
-            return null;
-        }
+        return $this->makeRequest('/products');
     }
 
     public function getProductById(int $productId): ?array
     {
+        return $this->makeRequest("/products/{$productId}");
+    }
+
+    private function makeRequest(string $endpoint): ?array
+    {
         try {
-            $response = Http::timeout(10)->get("{$this->baseUrl}/products/{$productId}");
+            $url = $this->baseUrl . $endpoint;
+            $response = Http::timeout(10)->get($url);
 
             if ($response->successful()) {
                 return $response->json();
             }
 
-            Log::error('Erro ao buscar produto da API externa', [
-                'product_id' => $productId,
+            Log::error(trans('logs.external_api_error', [], 'pt_BR'), [
+                'endpoint' => $endpoint,
+                'url' => $url,
                 'status' => $response->status(),
                 'body' => $response->body()
             ]);
 
             return null;
         } catch (\Exception $e) {
-            Log::error('Exceção ao buscar produto da API externa', [
-                'product_id' => $productId,
+            Log::error(trans('logs.external_api_exception', [], 'pt_BR'), [
+                'endpoint' => $endpoint,
+                'url' => $this->baseUrl . $endpoint,
                 'message' => $e->getMessage()
             ]);
 
