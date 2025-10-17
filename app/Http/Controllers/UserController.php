@@ -2,32 +2,39 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\User;
+use App\Http\Resources\UserResource;
+use App\Services\UserService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Validator;
 
 class UserController extends Controller
 {
-    public function index(): JsonResponse
+    public function __construct(
+        private UserService $userService
+    ) {}
+
+    public function index(Request $request): JsonResponse
     {
         if (!auth()->user()->hasRole('admin')) {
             return response()->json(['message' => 'Acesso não autorizado'], 403);
         }
 
-        $users = User::with('roles')->get();
+        $perPage = $request->query('per_page', 10);
+        $users = $this->userService->getAllUsers($perPage);
 
-        return response()->json($users->map(function ($user) {
-            return [
-                'id' => $user->id,
-                'name' => $user->name,
-                'email' => $user->email,
-                'role' => $user->roles->pluck('name')->first(),
-                'created_at' => $user->created_at,
-            ];
-        }));
+        return response()->json([
+            'data' => UserResource::collection($users->items()),
+            'pagination' => [
+                'current_page' => $users->currentPage(),
+                'per_page' => $users->perPage(),
+                'total' => $users->total(),
+                'last_page' => $users->lastPage(),
+                'from' => $users->firstItem(),
+                'to' => $users->lastItem(),
+            ]
+        ]);
     }
 
     public function show(int $id): JsonResponse
@@ -38,19 +45,13 @@ class UserController extends Controller
             return response()->json(['message' => 'Acesso não autorizado'], 403);
         }
 
-        $user = User::with('roles')->find($id);
+        $user = $this->userService->getUserById($id);
 
         if (!$user) {
             return response()->json(['message' => 'Usuário não encontrado'], 404);
         }
 
-        return response()->json([
-            'id' => $user->id,
-            'name' => $user->name,
-            'email' => $user->email,
-            'role' => $user->roles->pluck('name')->first(),
-            'created_at' => $user->created_at,
-        ]);
+        return response()->json(new UserResource($user));
     }
 
     public function update(Request $request, int $id): JsonResponse
@@ -61,7 +62,7 @@ class UserController extends Controller
             return response()->json(['message' => 'Acesso não autorizado'], 403);
         }
 
-        $user = User::find($id);
+        $user = $this->userService->getUserById($id);
 
         if (!$user) {
             return response()->json(['message' => 'Usuário não encontrado'], 404);
@@ -87,22 +88,11 @@ class UserController extends Controller
             ], 422);
         }
 
-        $validated = $validator->validated();
-
-        if (isset($validated['password'])) {
-            $validated['password'] = Hash::make($validated['password']);
-        }
-
-        $user->update($validated);
+        $updatedUser = $this->userService->updateUser($user, $validator->validated());
 
         return response()->json([
             'message' => 'Usuário atualizado com sucesso',
-            'user' => [
-                'id' => $user->id,
-                'name' => $user->name,
-                'email' => $user->email,
-                'role' => $user->roles->pluck('name')->first(),
-            ]
+            'user' => new UserResource($updatedUser),
         ]);
     }
 
@@ -112,13 +102,13 @@ class UserController extends Controller
             return response()->json(['message' => 'Acesso não autorizado'], 403);
         }
 
-        $user = User::find($id);
+        $user = $this->userService->getUserById($id);
 
         if (!$user) {
             return response()->json(['message' => 'Usuário não encontrado'], 404);
         }
 
-        $user->delete();
+        $this->userService->deleteUser($user);
 
         return response()->json(['message' => 'Usuário removido com sucesso']);
     }

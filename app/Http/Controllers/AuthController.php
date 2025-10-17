@@ -4,63 +4,45 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\LoginRequest;
 use App\Http\Requests\RegisterRequest;
-use App\Models\User;
+use App\Services\AuthService;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Hash;
+use App\Http\Resources\AuthResource;
 
 class AuthController extends Controller
 {
+    public function __construct(
+        private AuthService $authService
+    ) {}
+
     public function register(RegisterRequest $request): JsonResponse
     {
-        $user = User::create([
-            'name' => $request->name,
-            'email' => $request->email,
-            'password' => Hash::make($request->password),
-        ]);
-
-        $user->assignRole('client');
+        $user = $this->authService->register($request->validated());
 
         return response()->json([
             'message' => trans('auth.register_success', [], 'pt_BR'),
-            'user' => [
-                'id' => $user->id,
-                'name' => $user->name,
-                'email' => $user->email,
-                'role' => $user->roles->pluck('name')->first(),
-            ]
+            'user' => new AuthResource($user),
         ], 201);
     }
 
     public function login(LoginRequest $request): JsonResponse
     {
-        $user = User::where('email', $request->email)->first();
+        $result = $this->authService->login($request->email, $request->password);
 
-        if (!$user || !Hash::check($request->password, $user->password)) {
+        if (!$result) {
             return response()->json([
                 'message' => trans('auth.failed', [], 'pt_BR')
             ], 401);
         }
 
-        $user->tokens()->delete();
-
-        $token = $user->createToken('auth_token')->plainTextToken;
-
         return response()->json([
             'message' => trans('auth.login_success', [], 'pt_BR'),
-            'access_token' => $token,
-            'token_type' => 'Bearer',
-            'user' => [
-                'id' => $user->id,
-                'name' => $user->name,
-                'email' => $user->email,
-                'role' => $user->roles->pluck('name')->first(),
-            ]
+            'user' => (new AuthResource($result['user']))->withToken($result['token']),
         ]);
     }
 
     public function logout(): JsonResponse
     {
-        auth()->user()->currentAccessToken()->delete();
+        $this->authService->logout(auth()->user());
 
         return response()->json([
             'message' => trans('auth.logout_success', [], 'pt_BR')
