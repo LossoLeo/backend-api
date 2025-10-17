@@ -17,12 +17,14 @@ class Product extends Model
     ];
 
     protected $casts = [
+        'external_id' => 'integer',
         'rating' => 'array',
         'price' => 'decimal:2',
     ];
 
     public function users(): BelongsToMany
     {
-        return $this->belongsToMany(User::class)->withTimestamps();
+        return $this->belongsToMany(User::class, 'product_user')
+            ->withTimestamps();
     }
 }

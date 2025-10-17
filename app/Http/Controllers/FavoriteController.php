@@ -89,7 +89,7 @@ class FavoriteController extends Controller
         if (!$result) {
             return response()->json([
                 'message' => trans('favorites.not_found', [], 'pt_BR')
-            ], 404);
+            ], 409);
         }
 
         return response()->json([
